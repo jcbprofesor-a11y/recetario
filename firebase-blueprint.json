@@ -1,0 +1,118 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and access status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "isApproved": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "email", "isApproved", "role"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Product in the database",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "allergens": { "type": "array", "items": { "type": "string" } },
+        "category": { "type": "string" },
+        "unit": { "type": "string" },
+        "pricePerUnit": { "type": "number" }
+      },
+      "required": ["id", "name", "unit", "pricePerUnit"]
+    },
+    "Recipe": {
+      "title": "Recipe",
+      "description": "Technical recipe sheet",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "photo": { "type": "string" },
+        "creator": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "yieldQuantity": { "type": "number" },
+        "yieldUnit": { "type": "string" },
+        "subRecipes": { "type": "array" },
+        "platingInstructions": { "type": "string" },
+        "serviceDetails": { "type": "object" },
+        "extraAllergens": { "type": "array", "items": { "type": "string" } },
+        "lastModified": { "type": "number" },
+        "totalCost": { "type": "number" }
+      },
+      "required": ["id", "name", "category", "creator", "lastModified"]
+    },
+    "MenuPlan": {
+      "title": "MenuPlan",
+      "description": "A planned menu",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "pax": { "type": "number" },
+        "recipeIds": { "type": "array", "items": { "type": "string" } },
+        "lastModified": { "type": "number" }
+      },
+      "required": ["id", "title", "date", "pax", "recipeIds", "lastModified"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "teacherName": { "type": "string" },
+        "instituteName": { "type": "string" },
+        "teacherLogo": { "type": "string" },
+        "instituteLogo": { "type": "string" },
+        "categories": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["teacherName", "instituteName", "categories"]
+    },
+    "WorkspaceSettings": {
+      "title": "WorkspaceSettings",
+      "description": "Settings specific to a workspace",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "categoryConfigs": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["workspaceId", "categories"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User access control and profiles"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Shared product database"
+    },
+    "/recipes/{recipeId}": {
+      "schema": "Recipe",
+      "description": "Shared recipe technical sheets"
+    },
+    "/menuPlans/{menuPlanId}": {
+      "schema": "MenuPlan",
+      "description": "Shared menu plans"
+    },
+    "/settings/global": {
+      "schema": "AppSettings",
+      "description": "Global settings for the app"
+    },
+    "/workspace_settings/{workspaceId}": {
+      "schema": "WorkspaceSettings",
+      "description": "Settings specific to a workspace"
+    }
+  }
+}
