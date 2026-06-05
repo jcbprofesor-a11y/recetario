@@ -511,31 +511,176 @@ function App() {
               }
             };
 
+            const currentUserId = auth.currentUser?.uid || appUser?.uid || '';
+            const userWorkspaceId = appUser?.workspaceId || currentUserId;
+            const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com' || appUser?.email === 'juan.codina@murciaeduca.es';
+
+            // Normalizador de recetas heredadas o incompletas
+            const normalizeRecipeForRestore = (r: any): any => {
+              const clean = JSON.parse(JSON.stringify(r));
+
+              if (!clean.id) {
+                clean.id = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9);
+              }
+
+              // Forzar ó asignar su workspaceId al del usuario que restaura, de forma que Firestore permita escribirla
+              clean.workspaceId = userWorkspaceId;
+
+              // Backwards compatibility para categoría y categorías
+              clean.category = clean.category || (clean.categories && clean.categories.length > 0 ? clean.categories[0] : 'Otros');
+              clean.categories = Array.isArray(clean.categories) ? clean.categories : (clean.category ? [clean.category] : ['Otros']);
+
+              // Ajustes de autoría
+              clean.creator = clean.creator || appUser?.teacherName || appUser?.displayName || settings.instituteName || 'Profesor';
+              clean.isPublic = typeof clean.isPublic === 'boolean' ? clean.isPublic : false;
+
+              // Ajustes de porciones
+              clean.yieldQuantity = typeof clean.yieldQuantity === 'number' ? clean.yieldQuantity : 4;
+              clean.yieldUnit = clean.yieldUnit || 'pax';
+
+              // Normalizar sub-recetas (elaboraciones) y sus ingredientes
+              const updatedSubRecipes = (clean.subRecipes || []).map((sr: any) => {
+                const subId = sr.id || Math.random().toString();
+                const subPhotos = Array.isArray(sr.photos) ? sr.photos : (sr.photo ? [sr.photo] : []);
+                const subIngredients = Array.isArray(sr.ingredients) ? sr.ingredients.map((ing: any) => ({
+                  id: ing.id || Math.random().toString(),
+                  name: ing.name || '',
+                  quantity: ing.quantity || '',
+                  unit: ing.unit || 'g',
+                  allergens: Array.isArray(ing.allergens) ? ing.allergens : [],
+                  category: ing.category || '',
+                  pricePerUnit: typeof ing.pricePerUnit === 'number' ? ing.pricePerUnit : 0,
+                  weightPerUnit: typeof ing.weightPerUnit === 'number' ? ing.weightPerUnit : 0,
+                  baseUnit: ing.baseUnit || '',
+                  cost: typeof ing.cost === 'number' ? ing.cost : 0
+                })) : [];
+
+                return {
+                  id: subId,
+                  name: sr.name || 'Elaboración',
+                  ingredients: subIngredients,
+                  instructions: sr.instructions || '',
+                  photos: subPhotos
+                };
+              });
+
+              if (!clean.subRecipes || clean.subRecipes.length === 0) {
+                // Si la receta es muy antigua y contiene los ingredientes y preparación directamente en la raíz
+                clean.subRecipes = [{
+                  id: 'legacy-1',
+                  name: 'Elaboración Principal',
+                  ingredients: Array.isArray(clean.ingredients) ? clean.ingredients.map((ing: any) => ({
+                    id: ing.id || Math.random().toString(),
+                    name: ing.name || '',
+                    quantity: ing.quantity || '',
+                    unit: ing.unit || 'g',
+                    allergens: Array.isArray(ing.allergens) ? ing.allergens : [],
+                    category: ing.category || '',
+                    pricePerUnit: typeof ing.pricePerUnit === 'number' ? ing.pricePerUnit : 0,
+                    weightPerUnit: typeof ing.weightPerUnit === 'number' ? ing.weightPerUnit : 0,
+                    baseUnit: ing.baseUnit || '',
+                    cost: typeof ing.cost === 'number' ? ing.cost : 0
+                  })) : [],
+                  instructions: clean.instructions || '',
+                  photos: clean.photo ? [clean.photo] : []
+                }];
+              } else {
+                clean.subRecipes = updatedSubRecipes;
+              }
+
+              // Eliminar variables obsoletas en el nivel superior para no saturar tamaño del documento
+              delete clean.ingredients;
+              delete clean.instructions;
+
+              // Valores por defecto para detalles de servicio
+              const defaultServiceDetails = {
+                presentation: '',
+                servingTemp: '',
+                cutlery: '',
+                passTime: '',
+                serviceType: 'americana',
+                clientDescription: ''
+              };
+              clean.serviceDetails = {
+                ...defaultServiceDetails,
+                ...(clean.serviceDetails || {})
+              };
+
+              clean.platingInstructions = clean.platingInstructions || '';
+              clean.photo = clean.photo || '';
+              clean.lastModified = typeof clean.lastModified === 'number' ? clean.lastModified : Date.now();
+              clean.totalCost = typeof clean.totalCost === 'number' ? clean.totalCost : 0;
+
+              return clean;
+            };
+
+            // Normalizador de productos
+            const normalizeProductForRestore = (p: any): any => {
+              const clean = JSON.parse(JSON.stringify(p));
+              if (!clean.id) {
+                clean.id = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9);
+              }
+              clean.name = clean.name || 'Ingrediente Desconocido';
+              clean.allergens = Array.isArray(clean.allergens) ? clean.allergens : [];
+              clean.unit = clean.unit || 'g';
+              clean.pricePerUnit = typeof clean.pricePerUnit === 'number' ? clean.pricePerUnit : 0;
+
+              if (isActuallyAdmin) {
+                clean.status = clean.status || 'approved';
+              } else {
+                clean.status = 'pending';
+                clean.requestedBy = currentUserId;
+              }
+              return clean;
+            };
+
+            // Normalizador de planes de menú (MenuPlans)
+            const normalizeMenuPlanForRestore = (m: any): any => {
+              const clean = JSON.parse(JSON.stringify(m));
+              if (!clean.id) {
+                clean.id = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9);
+              }
+              clean.workspaceId = userWorkspaceId;
+              clean.title = clean.title || 'Plan de Menú';
+              clean.date = clean.date || new Date().toISOString().split('T')[0];
+              clean.pax = typeof clean.pax === 'number' ? clean.pax : 1;
+              clean.recipeIds = Array.isArray(clean.recipeIds) ? clean.recipeIds : [];
+              clean.lastModified = typeof clean.lastModified === 'number' ? clean.lastModified : Date.now();
+              return clean;
+            };
+
             if (backup.recipes) {
               for (const r of backup.recipes) {
-                await addRefToBatch(doc(db, 'recipes', r.id), r);
+                const cleanRecipe = normalizeRecipeForRestore(r);
+                await addRefToBatch(doc(db, 'recipes', cleanRecipe.id), cleanRecipe);
               }
             }
             if (backup.productDatabase) {
               for (const p of backup.productDatabase) {
-                await addRefToBatch(doc(db, 'products', p.id), p);
+                const cleanProduct = normalizeProductForRestore(p);
+                await addRefToBatch(doc(db, 'products', cleanProduct.id), cleanProduct);
               }
             }
             if (backup.savedMenus) {
               for (const m of backup.savedMenus) {
-                await addRefToBatch(doc(db, 'menuPlans', m.id), m);
+                const cleanMenu = normalizeMenuPlanForRestore(m);
+                await addRefToBatch(doc(db, 'menuPlans', cleanMenu.id), cleanMenu);
               }
             }
-            if (backup.settings) {
-              await addRefToBatch(doc(db, 'settings', 'global'), backup.settings);
-            }
 
-            // Admin only data
-            const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com' || appUser?.email === 'juan.codina@murciaeduca.es';
+            // Solamente administradores pueden restaurar configuraciones globales u otros usuarios/invitaciones
             if (isActuallyAdmin) {
+              if (backup.settings) {
+                await addRefToBatch(doc(db, 'settings', 'global'), backup.settings);
+              }
               if (backup.users) {
                 for (const u of backup.users) {
-                  await addRefToBatch(doc(db, 'users', u.uid), u);
+                  // Las reglas de seguridad restringen la creación a isOwner(userId)
+                  // por lo que escribir otros perfiles de usuario fallaría independientemente.
+                  // Escribimos únicamente si somos el propietario, o lo omitimos de forma segura.
+                  if (u.uid === currentUserId) {
+                    await addRefToBatch(doc(db, 'users', u.uid), u);
+                  }
                 }
               }
               if (backup.invites) {
