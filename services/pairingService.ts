@@ -1,6 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const getAiClient = () => {
+  const apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
+                 (import.meta.env?.VITE_GEMINI_API_KEY) || 
+                 "";
+  return new GoogleGenAI({ apiKey });
+};
 
 export interface Pairing {
   name: string;
@@ -19,6 +24,7 @@ export interface PairingResult {
 }
 
 export const getMolecularPairings = async (ingredients: string[]): Promise<PairingResult> => {
+  const ai = getAiClient();
   const prompt = `Analiza la compatibilidad molecular de estos ingredientes: ${ingredients.join(', ')}. Sugiere maridajes basados en moléculas compartidas (FlavorDB).`;
   
   const response = await ai.models.generateContent({
@@ -87,6 +93,7 @@ export const getMolecularPairings = async (ingredients: string[]): Promise<Pairi
 };
 
 export const analyzeRecipeMolecular = async (recipe: any): Promise<any> => {
+  const ai = getAiClient();
   const prompt = `Analiza molecularmente esta receta: ${recipe.name}. 
   Ingredientes: ${recipe.subRecipes.map((s: any) => s.ingredients.map((i: any) => i.name).join(', ')).join('. ')}.
   
@@ -115,6 +122,7 @@ export const generateRecipeAI = async (params: {
   goal: string;
   constraints: string[];
 }): Promise<any> => {
+  const ai = getAiClient();
   const prompt = `Crea una receta culinaria profesional única basada en:
   - Ingredientes: ${params.ingredients.join(', ')}
   - Estilo/Vibe: ${params.vibe}
