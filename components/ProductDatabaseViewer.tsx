@@ -46,7 +46,7 @@ export const ProductDatabaseViewer: React.FC<ProductDatabaseViewerProps> = ({
 
   const filteredProducts = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com';
+    const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com' || appUser?.email === 'juan.codina@murciaeduca.es';
     return products
       .filter(p => {
         const matchesSearch = p.name.toLowerCase().includes(term) || (p.category || "").toLowerCase().includes(term);

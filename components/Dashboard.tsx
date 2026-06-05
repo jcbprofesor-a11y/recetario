@@ -40,8 +40,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const sortedRecipes = [...recipes].sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
 
-  const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com';
-  const isOwner = appUser?.email?.toLowerCase() === 'jcbbinger@gmail.com' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com';
+  const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
+  const isOwner = appUser?.email?.toLowerCase() === 'jcbbinger@gmail.com' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
 
   const filteredRecipes = sortedRecipes.filter(r => {
     const recipeCategories = r.categories || [r.category];

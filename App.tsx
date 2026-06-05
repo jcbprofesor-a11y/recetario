@@ -133,7 +133,7 @@ function App() {
             }
             setAppUser(userData);
           } else {
-            const isAdminEmail = firebaseUser.email === 'jcbprofesor@gmail.com';
+            const isAdminEmail = firebaseUser.email === 'jcbprofesor@gmail.com' || firebaseUser.email === 'juan.codina@murciaeduca.es';
             const newUser: AppUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
@@ -166,7 +166,7 @@ function App() {
 
   // Firestore Sync
   useEffect(() => {
-    const isAdminEmail = user?.email === 'jcbprofesor@gmail.com';
+    const isAdminEmail = user?.email === 'jcbprofesor@gmail.com' || user?.email === 'juan.codina@murciaeduca.es';
     const isActuallyAdmin = appUser?.role === 'admin' || isAdminEmail;
     const isActuallyApproved = appUser?.isApproved || isAdminEmail;
 
@@ -429,7 +429,7 @@ function App() {
   const handleSaveProduct = async (product: Product) => {
     try {
       if (!appUser) return;
-      const isActuallyAdmin = appUser.role === 'admin' || appUser.email === 'jcbprofesor@gmail.com';
+      const isActuallyAdmin = appUser.role === 'admin' || appUser.email === 'jcbprofesor@gmail.com' || appUser.email === 'juan.codina@murciaeduca.es';
       const productToSave = {
         ...product,
         status: isActuallyAdmin ? 'approved' : (product.status || 'pending'),
@@ -495,50 +495,62 @@ function App() {
         onDeleteAccount={handleDeleteAccount}
         onRestore={async (backup: any) => {
           try {
-            const batch = writeBatch(db);
             let count = 0;
+            const batchLimit = 400; // Keep safely below the 500 Firestore limit
+            let batch = writeBatch(db);
+            let currentBatchOperations = 0;
+
+            const addRefToBatch = async (ref: any, data: any) => {
+              batch.set(ref, data);
+              currentBatchOperations++;
+              count++;
+              if (currentBatchOperations >= batchLimit) {
+                await batch.commit();
+                batch = writeBatch(db);
+                currentBatchOperations = 0;
+              }
+            };
 
             if (backup.recipes) {
               for (const r of backup.recipes) {
-                batch.set(doc(db, 'recipes', r.id), r);
-                count++;
+                await addRefToBatch(doc(db, 'recipes', r.id), r);
               }
             }
             if (backup.productDatabase) {
               for (const p of backup.productDatabase) {
-                batch.set(doc(db, 'products', p.id), p);
-                count++;
+                await addRefToBatch(doc(db, 'products', p.id), p);
               }
             }
             if (backup.savedMenus) {
               for (const m of backup.savedMenus) {
-                batch.set(doc(db, 'menuPlans', m.id), m);
-                count++;
+                await addRefToBatch(doc(db, 'menuPlans', m.id), m);
               }
             }
             if (backup.settings) {
-              batch.set(doc(db, 'settings', 'global'), backup.settings);
-              count++;
+              await addRefToBatch(doc(db, 'settings', 'global'), backup.settings);
             }
 
             // Admin only data
-            if (appUser?.role === 'admin') {
+            const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com' || appUser?.email === 'juan.codina@murciaeduca.es';
+            if (isActuallyAdmin) {
               if (backup.users) {
                 for (const u of backup.users) {
-                  batch.set(doc(db, 'users', u.uid), u);
-                  count++;
+                  await addRefToBatch(doc(db, 'users', u.uid), u);
                 }
               }
               if (backup.invites) {
                 for (const i of backup.invites) {
                   const inviteId = i.id || `${i.email}_${i.workspaceId}`;
-                  batch.set(doc(db, 'workspace_invites', inviteId), i);
-                  count++;
+                  await addRefToBatch(doc(db, 'workspace_invites', inviteId), i);
                 }
               }
             }
 
-            await batch.commit();
+            // Commit the remaining batch if any
+            if (currentBatchOperations > 0) {
+              await batch.commit();
+            }
+
             alert(`Restauración completada: ${count} elementos procesados.`);
             setIsSettingsOpen(false);
           } catch (err) {

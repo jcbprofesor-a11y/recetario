@@ -49,7 +49,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "jcbprofesor@gmail.com" && request.auth.token.email_verified == true));
+          ((request.auth.token.email == "jcbprofesor@gmail.com" || request.auth.token.email == "juan.codina@murciaeduca.es") && request.auth.token.email_verified == true));
     }
 
     function isApproved() {
@@ -91,7 +91,7 @@ service cloud.firestore {
       allow create: if isOwner(userId) && 
                       (
                         (request.resource.data.isApproved == false && request.resource.data.role == 'user') ||
-                        (request.auth.token.email == "jcbprofesor@gmail.com" && request.auth.token.email_verified == true && request.resource.data.role == 'admin' && request.resource.data.isApproved == true)
+                        ((request.auth.token.email == "jcbprofesor@gmail.com" || request.auth.token.email == "juan.codina@murciaeduca.es") && request.auth.token.email_verified == true && request.resource.data.role == 'admin' && request.resource.data.isApproved == true)
                       );
       
       // Only admins can approve users or change roles. Users can update their own workspaceId if they accept an invite.

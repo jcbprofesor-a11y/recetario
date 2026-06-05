@@ -31,7 +31,7 @@ export const RecipeView: React.FC<RecipeViewProps> = ({ recipe, settings, appUse
     return dynamicPax / recipe.yieldQuantity;
   }, [dynamicPax, recipe.yieldQuantity]);
 
-  const isOwner = appUser?.email?.toLowerCase() === 'jcbbinger@gmail.com' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com';
+  const isOwner = appUser?.email?.toLowerCase() === 'jcbbinger@gmail.com' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
 
   const mainIngredients = useMemo(() => {
     const names = new Set<string>();
