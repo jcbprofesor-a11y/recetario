@@ -114,8 +114,15 @@ function App() {
         // Real-time user profile listener
         unsubUser = onSnapshot(userDocRef, async (docSnap) => {
           if (docSnap.exists()) {
-            let userData = docSnap.data() as AppUser;
             let needsUpdate = false;
+            let userData = docSnap.data() as AppUser;
+
+            const isAdminEmail = firebaseUser.email?.toLowerCase() === 'jcbprofesor@gmail.com' || firebaseUser.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
+            if (isAdminEmail && (userData.role !== 'admin' || !userData.isApproved)) {
+              userData.role = 'admin';
+              userData.isApproved = true;
+              needsUpdate = true;
+            }
 
             if (!userData.workspaceId) {
               userData.workspaceId = firebaseUser.uid;
@@ -133,7 +140,7 @@ function App() {
             }
             setAppUser(userData);
           } else {
-            const isAdminEmail = firebaseUser.email === 'jcbprofesor@gmail.com' || firebaseUser.email === 'juan.codina@murciaeduca.es';
+            const isAdminEmail = firebaseUser.email?.toLowerCase() === 'jcbprofesor@gmail.com' || firebaseUser.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
             const newUser: AppUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
@@ -166,7 +173,7 @@ function App() {
 
   // Firestore Sync
   useEffect(() => {
-    const isAdminEmail = user?.email === 'jcbprofesor@gmail.com' || user?.email === 'juan.codina@murciaeduca.es';
+    const isAdminEmail = user?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || user?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
     const isActuallyAdmin = appUser?.role === 'admin' || isAdminEmail;
     const isActuallyApproved = appUser?.isApproved || isAdminEmail;
 
@@ -429,7 +436,7 @@ function App() {
   const handleSaveProduct = async (product: Product) => {
     try {
       if (!appUser) return;
-      const isActuallyAdmin = appUser.role === 'admin' || appUser.email === 'jcbprofesor@gmail.com' || appUser.email === 'juan.codina@murciaeduca.es';
+      const isActuallyAdmin = appUser.role === 'admin' || appUser.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
       const productToSave = {
         ...product,
         status: isActuallyAdmin ? 'approved' : (product.status || 'pending'),
@@ -774,7 +781,39 @@ function App() {
           onEdit={handleSaveProduct} 
           onDelete={handleDeleteProduct} 
           onImport={async (list) => {
-            for (const p of list) await handleSaveProduct(p);
+            try {
+              const batchLimit = 400;
+              let batch = writeBatch(db);
+              let count = 0;
+              let operations = 0;
+
+              const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
+
+              for (const p of list) {
+                const productToSave = {
+                  ...p,
+                  status: isActuallyAdmin ? 'approved' : (p.status || 'pending'),
+                  requestedBy: p.requestedBy || appUser?.uid
+                };
+                batch.set(doc(db, 'products', productToSave.id), productToSave);
+                operations++;
+                count++;
+
+                if (operations >= batchLimit) {
+                  await batch.commit();
+                  batch = writeBatch(db);
+                  operations = 0;
+                }
+              }
+
+              if (operations > 0) {
+                await batch.commit();
+              }
+              // console.log(`Imported ${count} products`);
+            } catch (err) {
+              console.error("Error importing products:", err);
+              alert("Error al importar la base de datos de productos.");
+            }
           }} 
         />
       ) : viewState === 'USER_MANAGEMENT' ? (
