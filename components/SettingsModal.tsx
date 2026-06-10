@@ -36,7 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
   });
   const backupInputRef = useRef<HTMLInputElement>(null);
 
-  const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
+  const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com' || appUser?.email === 'juan.codina@murciaeduca.es';
 
   useEffect(() => {
     setLocalSettings(settings);

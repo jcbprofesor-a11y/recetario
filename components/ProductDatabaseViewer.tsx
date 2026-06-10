@@ -75,51 +75,30 @@ export const ProductDatabaseViewer: React.FC<ProductDatabaseViewerProps> = ({
     link.click();
   };
 
-  const [isImporting, setIsImporting] = useState(false);
-
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       try {
-        setIsImporting(true);
         const text = event.target?.result as string;
         const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
-        if (lines.length <= 1) {
-          setIsImporting(false);
-          return;
-        }
-
-        // Detectar delimitador (coma o punto y coma)
-        const firstLine = lines[0];
-        const commaCount = (firstLine.match(/,/g) || []).length;
-        const semiCount = (firstLine.match(/;/g) || []).length;
-        const delimiter = semiCount > commaCount ? ';' : ',';
-        
         const dataLines = lines.slice(1);
         
         const newProducts: Product[] = dataLines.map((line, index) => {
-          // Parser robusto para CSV con el delimitador detectado
-          let parts: string[] = [];
-          if (delimiter === ',') {
-            const match = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$)/g);
-            parts = match ? match.map(p => p.replace(/^"|"$/g, '')) : [];
-          } else {
-            const match = line.match(/(".*?"|[^;]+|(?<=;)(?=;)|(?<=;)$)/g);
-            parts = match ? match.map(p => p.replace(/^"|"$/g, '')) : [];
-          }
-
+          // Parser robusto para CSV con comas en campos entrecomillados
+          const parts = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$)/g);
           if (!parts || parts.length < 4) return null;
 
-          const familyRaw = parts[0]?.trim().toUpperCase() || 'VARIOS';
-          let nameRaw = parts[1]?.trim().toUpperCase() || 'SIN NOMBRE';
-          const priceRaw = parts[2]?.trim() || "0";
-          const unitRaw = parts[3]?.trim() || "kg";
+          const familyRaw = parts[0].replace(/^"|"$/g, '').trim().toUpperCase();
+          let nameRaw = parts[1].replace(/^"|"$/g, '').trim().toUpperCase();
+          const priceRaw = parts[2].trim();
+          const unitRaw = parts[3].trim();
           const weightRaw = parts[4] ? parts[4].trim() : "";
           const allergensRaw = parts[5] ? parts[5].trim() : "";
 
-          // LIMPIEZA: Quitar familia del nombre si está presente
+          // LIMPIEZA CRÍTICA: Si el nombre contiene la familia al inicio, la quitamos
+          // Esto evita que salga "ACEITES, ACEITE DE OLIVA" en el nombre
           const prefixes = [familyRaw + ",", familyRaw + " -", familyRaw + ":", familyRaw + " "];
           for (const prefix of prefixes) {
             if (nameRaw.startsWith(prefix)) {
@@ -139,15 +118,9 @@ export const ProductDatabaseViewer: React.FC<ProductDatabaseViewerProps> = ({
             unit: (unitRaw || 'kg').trim(),
             weightPerUnit: weightRaw ? parseFloat(weightRaw) : undefined,
             allergens: allergens,
-            category: familyRaw
+            category: familyRaw || 'VARIOS'
           };
         }).filter(p => p !== null) as Product[];
-
-        if (newProducts.length === 0) {
-          alert("No se han encontrado productos válidos en el archivo. Revisa el formato.");
-          setIsImporting(false);
-          return;
-        }
 
         // Sincronizar: Si el nombre ya existe, se actualiza. Si no, se añade.
         const updatedDatabase = [...products];
@@ -160,13 +133,10 @@ export const ProductDatabaseViewer: React.FC<ProductDatabaseViewerProps> = ({
           }
         });
 
-        await onImport(updatedDatabase);
-        alert(`Éxito: Se han procesado e importado ${newProducts.length} registros.`);
+        onImport(updatedDatabase);
+        alert(`Éxito: Se han procesado ${newProducts.length} registros y organizado por sus familias correspondientes.`);
       } catch (err) {
-        console.error("CSV Import Error:", err);
         alert("Error de formato en el CSV. Asegúrate de seguir el orden: Familia, Nombre, Precio, Unidad, Alérgenos");
-      } finally {
-        setIsImporting(false);
       }
     };
     reader.readAsText(file);
@@ -207,17 +177,6 @@ export const ProductDatabaseViewer: React.FC<ProductDatabaseViewerProps> = ({
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         {/* Cabecera */}
-        {isImporting && (
-          <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white p-8 rounded-[2rem] shadow-2xl flex flex-col items-center gap-4">
-              <Clock className="animate-spin text-slate-800" size={48} />
-              <div className="text-center">
-                <p className="font-black uppercase tracking-tighter text-xl">Sincronizando Datos</p>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Por favor espera un momento...</p>
-              </div>
-            </div>
-          </div>
-        )}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
           <div className="flex items-center gap-4 w-full md:w-auto">
             <button onClick={onBack} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-slate-600">

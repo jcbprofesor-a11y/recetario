@@ -114,15 +114,8 @@ function App() {
         // Real-time user profile listener
         unsubUser = onSnapshot(userDocRef, async (docSnap) => {
           if (docSnap.exists()) {
-            let needsUpdate = false;
             let userData = docSnap.data() as AppUser;
-
-            const isAdminEmail = firebaseUser.email?.toLowerCase() === 'jcbprofesor@gmail.com' || firebaseUser.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
-            if (isAdminEmail && (userData.role !== 'admin' || !userData.isApproved)) {
-              userData.role = 'admin';
-              userData.isApproved = true;
-              needsUpdate = true;
-            }
+            let needsUpdate = false;
 
             if (!userData.workspaceId) {
               userData.workspaceId = firebaseUser.uid;
@@ -140,7 +133,7 @@ function App() {
             }
             setAppUser(userData);
           } else {
-            const isAdminEmail = firebaseUser.email?.toLowerCase() === 'jcbprofesor@gmail.com' || firebaseUser.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
+            const isAdminEmail = firebaseUser.email === 'jcbprofesor@gmail.com' || firebaseUser.email === 'juan.codina@murciaeduca.es';
             const newUser: AppUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
@@ -173,7 +166,7 @@ function App() {
 
   // Firestore Sync
   useEffect(() => {
-    const isAdminEmail = user?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || user?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
+    const isAdminEmail = user?.email === 'jcbprofesor@gmail.com' || user?.email === 'juan.codina@murciaeduca.es';
     const isActuallyAdmin = appUser?.role === 'admin' || isAdminEmail;
     const isActuallyApproved = appUser?.isApproved || isAdminEmail;
 
@@ -436,7 +429,7 @@ function App() {
   const handleSaveProduct = async (product: Product) => {
     try {
       if (!appUser) return;
-      const isActuallyAdmin = appUser.role === 'admin' || appUser.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
+      const isActuallyAdmin = appUser.role === 'admin' || appUser.email === 'jcbprofesor@gmail.com' || appUser.email === 'juan.codina@murciaeduca.es';
       const productToSave = {
         ...product,
         status: isActuallyAdmin ? 'approved' : (product.status || 'pending'),
@@ -503,21 +496,6 @@ function App() {
         onRestore={async (backup: any) => {
           try {
             let count = 0;
-            const batchLimit = 400; // Keep safely below the 500 Firestore limit
-            let batch = writeBatch(db);
-            let currentBatchOperations = 0;
-
-            const addRefToBatch = async (ref: any, data: any) => {
-              batch.set(ref, data);
-              currentBatchOperations++;
-              count++;
-              if (currentBatchOperations >= batchLimit) {
-                await batch.commit();
-                batch = writeBatch(db);
-                currentBatchOperations = 0;
-              }
-            };
-
             const currentUserId = auth.currentUser?.uid || appUser?.uid || '';
             const userWorkspaceId = appUser?.workspaceId || currentUserId;
             const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com' || appUser?.email === 'juan.codina@murciaeduca.es';
@@ -656,51 +634,87 @@ function App() {
               return clean;
             };
 
+            let batch = writeBatch(db);
+            let currentBatchOperations = 0;
+
+            const commitBatch = async () => {
+              if (currentBatchOperations > 0) {
+                await batch.commit();
+                batch = writeBatch(db);
+                currentBatchOperations = 0;
+              }
+            };
+
+            // 1. Restore Recipes (Small batch of max 5 to prevent document weight size limits)
             if (backup.recipes) {
               for (const r of backup.recipes) {
                 const cleanRecipe = normalizeRecipeForRestore(r);
-                await addRefToBatch(doc(db, 'recipes', cleanRecipe.id), cleanRecipe);
+                batch.set(doc(db, 'recipes', cleanRecipe.id), cleanRecipe);
+                currentBatchOperations++;
+                count++;
+                if (currentBatchOperations >= 5) {
+                  await commitBatch();
+                }
               }
+              await commitBatch();
             }
+
+            // 2. Restore Products (Standard safe batch size 400 is fine as they have no image blobs)
             if (backup.productDatabase) {
               for (const p of backup.productDatabase) {
                 const cleanProduct = normalizeProductForRestore(p);
-                await addRefToBatch(doc(db, 'products', cleanProduct.id), cleanProduct);
+                batch.set(doc(db, 'products', cleanProduct.id), cleanProduct);
+                currentBatchOperations++;
+                count++;
+                if (currentBatchOperations >= 400) {
+                  await commitBatch();
+                }
               }
+              await commitBatch();
             }
+
+            // 3. Restore Menu Plans
             if (backup.savedMenus) {
               for (const m of backup.savedMenus) {
                 const cleanMenu = normalizeMenuPlanForRestore(m);
-                await addRefToBatch(doc(db, 'menuPlans', cleanMenu.id), cleanMenu);
+                batch.set(doc(db, 'menuPlans', cleanMenu.id), cleanMenu);
+                currentBatchOperations++;
+                count++;
+                if (currentBatchOperations >= 400) {
+                  await commitBatch();
+                }
               }
+              await commitBatch();
             }
 
-            // Solamente administradores pueden restaurar configuraciones globales u otros usuarios/invitaciones
+            // 4. Restore Settings, Users & Invites (Admin only)
             if (isActuallyAdmin) {
               if (backup.settings) {
-                await addRefToBatch(doc(db, 'settings', 'global'), backup.settings);
+                batch.set(doc(db, 'settings', 'global'), backup.settings);
+                currentBatchOperations++;
+                count++;
               }
               if (backup.users) {
                 for (const u of backup.users) {
-                  // Las reglas de seguridad restringen la creación a isOwner(userId)
-                  // por lo que escribir otros perfiles de usuario fallaría independientemente.
-                  // Escribimos únicamente si somos el propietario, o lo omitimos de forma segura.
                   if (u.uid === currentUserId) {
-                    await addRefToBatch(doc(db, 'users', u.uid), u);
+                    batch.set(doc(db, 'users', u.uid), u);
+                    currentBatchOperations++;
+                    count++;
                   }
                 }
               }
               if (backup.invites) {
                 for (const i of backup.invites) {
                   const inviteId = i.id || `${i.email}_${i.workspaceId}`;
-                  await addRefToBatch(doc(db, 'workspace_invites', inviteId), i);
+                  batch.set(doc(db, 'workspace_invites', inviteId), i);
+                  currentBatchOperations++;
+                  count++;
+                  if (currentBatchOperations >= 400) {
+                    await commitBatch();
+                  }
                 }
               }
-            }
-
-            // Commit the remaining batch if any
-            if (currentBatchOperations > 0) {
-              await batch.commit();
+              await commitBatch();
             }
 
             alert(`Restauración completada: ${count} elementos procesados.`);
@@ -782,37 +796,107 @@ function App() {
           onDelete={handleDeleteProduct} 
           onImport={async (list) => {
             try {
-              const batchLimit = 400;
+              setIsLoading(true);
+              
+              const currentProductsMap = new Map(productDatabase.map(p => [p.id, p]));
+              const newListMap = new Map(list.map(p => [p.id, p]));
+              
+              const toDelete: Product[] = [];
+              const toUpsert: Product[] = [];
+              
+              // Identify deletions
+              for (const existingProduct of productDatabase) {
+                if (!newListMap.has(existingProduct.id)) {
+                  toDelete.push(existingProduct);
+                }
+              }
+              
+              // Identify additions or edits
+              for (const newProduct of list) {
+                const existingProduct = currentProductsMap.get(newProduct.id);
+                if (!existingProduct) {
+                  toUpsert.push(newProduct);
+                } else {
+                  const nameMatches = existingProduct.name === newProduct.name;
+                  const priceMatches = existingProduct.pricePerUnit === newProduct.pricePerUnit;
+                  const unitMatches = existingProduct.unit === newProduct.unit;
+                  const weightMatches = existingProduct.weightPerUnit === newProduct.weightPerUnit;
+                  const categoryMatches = existingProduct.category === newProduct.category;
+                  const statusMatches = existingProduct.status === newProduct.status;
+                  const requestedMatches = existingProduct.requestedBy === newProduct.requestedBy;
+                  const allergensMatches = JSON.stringify(existingProduct.allergens) === JSON.stringify(newProduct.allergens);
+                  
+                  const hasChanged = 
+                    !nameMatches || 
+                    !priceMatches || 
+                    !unitMatches || 
+                    !weightMatches || 
+                    !categoryMatches ||
+                    !statusMatches ||
+                    !requestedMatches ||
+                    !allergensMatches;
+                    
+                  if (hasChanged) {
+                    toUpsert.push(newProduct);
+                  }
+                }
+              }
+              
+              if (toUpsert.length === 0 && toDelete.length === 0) {
+                alert("No se detectaron cambios en el inventario.");
+                setIsLoading(false);
+                return;
+              }
+              
+              const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email === 'jcbprofesor@gmail.com' || appUser?.email === 'juan.codina@murciaeduca.es';
+              const currentUserId = auth.currentUser?.uid || appUser?.uid || '';
+              
               let batch = writeBatch(db);
-              let count = 0;
-              let operations = 0;
-
-              const isActuallyAdmin = appUser?.role === 'admin' || appUser?.email?.toLowerCase() === 'jcbprofesor@gmail.com' || appUser?.email?.toLowerCase() === 'juan.codina@murciaeduca.es';
-
-              for (const p of list) {
+              let currentBatchOperations = 0;
+              let upsertCount = 0;
+              let deleteCount = 0;
+              
+              const commitProductsBatch = async () => {
+                if (currentBatchOperations > 0) {
+                  await batch.commit();
+                  batch = writeBatch(db);
+                  currentBatchOperations = 0;
+                }
+              };
+              
+              // Deletions
+              for (const p of toDelete) {
+                batch.delete(doc(db, 'products', p.id));
+                currentBatchOperations++;
+                deleteCount++;
+                if (currentBatchOperations >= 400) {
+                  await commitProductsBatch();
+                }
+              }
+              
+              // Upserts
+              for (const p of toUpsert) {
                 const productToSave = {
                   ...p,
                   status: isActuallyAdmin ? 'approved' : (p.status || 'pending'),
-                  requestedBy: p.requestedBy || appUser?.uid
+                  requestedBy: p.requestedBy || currentUserId
                 };
-                batch.set(doc(db, 'products', productToSave.id), productToSave);
-                operations++;
-                count++;
-
-                if (operations >= batchLimit) {
-                  await batch.commit();
-                  batch = writeBatch(db);
-                  operations = 0;
+                batch.set(doc(db, 'products', p.id), productToSave);
+                currentBatchOperations++;
+                upsertCount++;
+                if (currentBatchOperations >= 400) {
+                  await commitProductsBatch();
                 }
               }
-
-              if (operations > 0) {
-                await batch.commit();
-              }
-              // console.log(`Imported ${count} products`);
+              
+              await commitProductsBatch();
+              
+              alert(`Importación completada con éxito:\n- ${upsertCount} productos creados o actualizados.\n- ${deleteCount} productos eliminados.`);
             } catch (err) {
               console.error("Error importing products:", err);
-              alert("Error al importar la base de datos de productos.");
+              alert("Hubo un error al sincronizar el inventario con el servidor.");
+            } finally {
+              setIsLoading(false);
             }
           }} 
         />
